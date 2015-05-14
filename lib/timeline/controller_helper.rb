@@ -15,6 +15,7 @@ module Timeline
         @object = options.delete :object
         @target = options.delete :target
         @followers = options.delete :followers
+        @friends = options.delete :friends
         @mentionable = options.delete :mentionable
        
         @fields_for = {}
@@ -46,6 +47,7 @@ module Timeline
         add_activity_by_user(activity_item[:actor][:id], activity_item)
         add_mentions(activity_item)
         add_activity_to_followers(activity_item) if @followers.any?
+        add_activity_to_friends(activity_item) if @friends.any?
       end
 
       def add_activity_by_user(user_id, activity_item)
@@ -56,8 +58,16 @@ module Timeline
         redis_add "user:id:#{user_id}:activity", activity_item
       end
 
+      def add_activity_to_users_friends(user_id, activity_item)
+        redis_add "user:id:#{user_id}:activity:friends", activity_item
+      end
+
       def add_activity_to_followers(activity_item)
         @followers.each { |follower| add_activity_to_user(follower.id, activity_item) }
+      end
+
+      def add_activity_to_friends(activity_item)
+        @friends.each { |friend| add_activity_to_users_friends(friend, activity_item) }
       end
 
       def add_mentions(activity_item)
