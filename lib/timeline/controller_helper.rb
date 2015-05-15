@@ -9,7 +9,8 @@ module Timeline
       def track_timeline_activity(name, options={})
         @name = name
         @start_value = 0
-        @limit_records = options.delete(:limit_records) || -1
+        @limit_records = (options[:limit_records] && options[:limit_records] > 30) ? options[:limit_records] : 30
+        @limit_days = (options[:limit_days] && options[:limit_days] > 30) ? options[:limit_days] : 30
         @actor = options.delete :actor
         @actor ||= :creator
         @object = options.delete :object
@@ -105,7 +106,33 @@ module Timeline
 
       def redis_add(list, activity_item)
         Timeline.redis.lpush list, Timeline.encode(activity_item)
-        Timeline.redis.ltrim list , @start_value , @limit_records
+        trim_activities list
+      end
+
+      def trim_activities(list)
+        return if (Timeline.redis.llen list) < @limit_records
+        last_record = get_record(list, -1)
+        return if (last_record && last_record["created_at"]) > Time.now - @limit_days.days
+        trim_old_activities(list)
+      end
+
+      def get_record(list, index)
+        last_record = Timeline.redis.lindex list, index
+        last_record = Timeline.decode(last_record) if last_record
+      end
+
+      def trim_old_activities(list)
+        Timeline.redis.ltrim list , 0 , get_trim_index(list, (Timeline.redis.llen list) - 1)
+      end
+
+      def get_trim_index(list, index)
+        return @limit_records if index < @limit_records
+        record = get_record(list, index)
+        if record && (record["created_at"] < Time.now - @limit_days.days)
+          return get_trim_index(list, index - 5)
+        else
+          return index
+        end
       end
 
       def set_object(object)
